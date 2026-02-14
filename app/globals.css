@@ -1,0 +1,229 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 7% 97%;
+    --foreground: 240 6% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 4%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 92%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 92%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 87%;
+    --input: 240 6% 87%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.625rem;
+    --surface: 0 0% 100%;
+    --surface-soft: 240 7% 97%;
+    --sidebar-background: 240 7% 97%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 6% 87%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 240 6% 4%;
+    --foreground: 240 7% 97%;
+    --card: 240 5% 8%;
+    --card-foreground: 240 7% 97%;
+    --popover: 240 5% 8%;
+    --popover-foreground: 240 7% 97%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4% 11%;
+    --secondary-foreground: 240 7% 97%;
+    --muted: 240 4% 11%;
+    --muted-foreground: 240 4% 64%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 14%;
+    --input: 240 4% 14%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --surface: 240 5% 8%;
+    --surface-soft: 240 4% 13%;
+    --sidebar-background: 240 5% 8%;
+    --sidebar-foreground: 240 7% 97%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 14%;
+    --sidebar-accent-foreground: 240 7% 97%;
+    --sidebar-border: 240 4% 14%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Smooth theme transition */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ===== GLOBAL OVERFLOW & LAYOUT PROTECTION ===== */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Prevent any element from causing horizontal scroll */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Prevent fixed elements from causing scroll */
+.fixed {
+  max-width: 100vw;
+}
+
+/* ===== MULTI-LANGUAGE TYPOGRAPHY ===== */
+
+/* Thai language: taller glyphs need more line-height */
+html[lang="th"] {
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+html[lang="th"] button,
+html[lang="th"] a,
+html[lang="th"] .btn {
+  min-height: 2.5rem;
+  line-height: 1.4;
+}
+
+/* CJK languages: moderate line-height, no letter-spacing */
+html[lang="zh"],
+html[lang="ja"],
+html[lang="ko"] {
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+/* Default English */
+html[lang="en"] {
+  line-height: 1.3;
+}
+
+/* ===== GLOBAL TEXT OVERFLOW PROTECTION ===== */
+
+/* Ensure buttons handle multi-line text gracefully */
+button, [role="button"], a {
+  min-height: auto;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* Protect card layouts from long text */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Safe word wrapping for descriptions */
+p, span, h1, h2, h3, h4, h5, h6 {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Cards should expand vertically, never overflow horizontally */
+[class*="rounded-xl"],
+[class*="rounded-2xl"] {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* No horizontal scrollbar anywhere except explicitly allowed */
+.overflow-x-auto {
+  scrollbar-width: thin;
+}
+
+/* Hide scrollbar for nav overflow */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom shimmer animation for skeletons */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted-foreground) / 0.08) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Glow pulse for CTA buttons */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(217 91% 60% / 0); }
+  50% { box-shadow: 0 0 20px 4px hsl(217 91% 60% / 0.3); }
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 6s ease-in-out infinite;
+}
