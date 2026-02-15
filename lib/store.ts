@@ -6,6 +6,112 @@ export type Tier = "free" | "member" | "pro"
 
 export type { Role } from "./permissions"
 
+// ======== PLAN DEFINITIONS (source of truth - no hardcoded numbers elsewhere) ========
+export interface PlanDefinition {
+  id: Tier
+  name: string
+  mutationLimit: number   // 0 = none, -1 = unlimited
+  uploadLimit: number     // monthly file uploads
+  storageLimitMb: number  // total storage in MB, -1 = unlimited
+  priceMonthly: number
+  priceYearly: number
+  coinBonus: number       // monthly coin bonus
+  features: string[]
+}
+
+export const PLAN_DEFINITIONS: Record<Tier, PlanDefinition> = {
+  free: {
+    id: "free",
+    name: "Free",
+    mutationLimit: 0,
+    uploadLimit: 5,
+    storageLimitMb: 100,
+    priceMonthly: 0,
+    priceYearly: 0,
+    coinBonus: 0,
+    features: [
+      "Access free courses",
+      "Browse all events",
+      "Community access",
+      "Basic profile",
+      "0 mutations/mo",
+      "5 uploads/mo",
+      "100 MB storage",
+    ],
+  },
+  member: {
+    id: "member",
+    name: "Member",
+    mutationLimit: 50,
+    uploadLimit: 50,
+    storageLimitMb: 2048,
+    priceMonthly: 9.99,
+    priceYearly: 99.99,
+    coinBonus: 50,
+    features: [
+      "All Free features",
+      "Access Member courses",
+      "Priority event booking",
+      "50 mutations/mo",
+      "50 uploads/mo",
+      "2 GB storage",
+      "Monthly coin bonus (50)",
+      "Exclusive badges",
+    ],
+  },
+  pro: {
+    id: "pro",
+    name: "Pro",
+    mutationLimit: -1,
+    uploadLimit: -1,
+    storageLimitMb: -1,
+    priceMonthly: 24.99,
+    priceYearly: 249.99,
+    coinBonus: 200,
+    features: [
+      "All Member features",
+      "Access ALL courses",
+      "VIP event access",
+      "Unlimited mutations",
+      "Unlimited uploads",
+      "Unlimited storage",
+      "Monthly coin bonus (200)",
+      "1-on-1 artist sessions",
+      "Early access to drops",
+      "Dashboard analytics",
+    ],
+  },
+}
+
+// ======== USER USAGE TRACKING ========
+export interface UserUsage {
+  userId: string
+  mutationsUsed: number
+  uploadsUsed: number
+  storageUsedMb: number
+  currentPeriodStart: string
+  currentPeriodEnd: string
+}
+
+// ======== USER SUBSCRIPTION ========
+export interface UserSubscription {
+  userId: string
+  tier: Tier
+  status: "active" | "expired" | "cancelled"
+  currentPeriodStart: string
+  currentPeriodEnd: string
+  lastPaymentAt: string | null
+}
+
+// ======== MUTATION RECORD ========
+export interface MutationRecord {
+  id: string
+  userId: string
+  action: string
+  resource: string
+  timestamp: string
+}
+
 export interface User {
   id: string
   name: string
@@ -562,4 +668,273 @@ export function getMediaLibrary(): MediaItem[] {
 export function setMediaLibrary(items: MediaItem[]) {
   if (!isBrowser) return
   localStorage.setItem("mw_media_library", JSON.stringify(items))
+}
+
+// ======== SUBSCRIPTION ENGINE ========
+
+function createPeriodDates(): { start: string; end: string } {
+  const now = new Date()
+  const end = new Date(now)
+  end.setMonth(end.getMonth() + 1)
+  return { start: now.toISOString(), end: end.toISOString() }
+}
+
+export function getUserSubscription(userId: string): UserSubscription {
+  if (!isBrowser) {
+    const { start, end } = createPeriodDates()
+    return { userId, tier: "free", status: "active", currentPeriodStart: start, currentPeriodEnd: end, lastPaymentAt: null }
+  }
+  const raw = localStorage.getItem(`mw_subscription_${userId}`)
+  if (raw) {
+    const sub: UserSubscription = JSON.parse(raw)
+    // Check if subscription has expired
+    if (sub.tier !== "free" && sub.status === "active" && new Date(sub.currentPeriodEnd) < new Date()) {
+      sub.status = "expired"
+      localStorage.setItem(`mw_subscription_${userId}`, JSON.stringify(sub))
+    }
+    return sub
+  }
+  // Default: free tier
+  const { start, end } = createPeriodDates()
+  const defaultSub: UserSubscription = { userId, tier: "free", status: "active", currentPeriodStart: start, currentPeriodEnd: end, lastPaymentAt: null }
+  localStorage.setItem(`mw_subscription_${userId}`, JSON.stringify(defaultSub))
+  return defaultSub
+}
+
+export function setUserSubscription(sub: UserSubscription) {
+  if (!isBrowser) return
+  localStorage.setItem(`mw_subscription_${sub.userId}`, JSON.stringify(sub))
+}
+
+export function upgradeSubscription(userId: string, newTier: Tier): UserSubscription {
+  const { start, end } = createPeriodDates()
+  const sub: UserSubscription = {
+    userId,
+    tier: newTier,
+    status: "active",
+    currentPeriodStart: start,
+    currentPeriodEnd: end,
+    lastPaymentAt: new Date().toISOString(),
+  }
+  setUserSubscription(sub)
+  // Reset usage on upgrade
+  resetUserUsage(userId)
+  return sub
+}
+
+export function isSubscriptionActive(userId: string): boolean {
+  const sub = getUserSubscription(userId)
+  if (sub.tier === "free") return true // Free is always "active"
+  return sub.status === "active" && new Date(sub.currentPeriodEnd) > new Date()
+}
+
+// ======== USAGE ENGINE ========
+
+export function getUserUsage(userId: string): UserUsage {
+  if (!isBrowser) {
+    const { start, end } = createPeriodDates()
+    return { userId, mutationsUsed: 0, uploadsUsed: 0, storageUsedMb: 0, currentPeriodStart: start, currentPeriodEnd: end }
+  }
+  const raw = localStorage.getItem(`mw_usage_${userId}`)
+  if (raw) {
+    const usage: UserUsage = JSON.parse(raw)
+    // Auto-reset if period has ended
+    if (new Date(usage.currentPeriodEnd) < new Date()) {
+      return resetUserUsage(userId)
+    }
+    return usage
+  }
+  const { start, end } = createPeriodDates()
+  const defaultUsage: UserUsage = { userId, mutationsUsed: 0, uploadsUsed: 0, storageUsedMb: 0, currentPeriodStart: start, currentPeriodEnd: end }
+  localStorage.setItem(`mw_usage_${userId}`, JSON.stringify(defaultUsage))
+  return defaultUsage
+}
+
+export function setUserUsage(usage: UserUsage) {
+  if (!isBrowser) return
+  localStorage.setItem(`mw_usage_${usage.userId}`, JSON.stringify(usage))
+}
+
+export function resetUserUsage(userId: string): UserUsage {
+  const { start, end } = createPeriodDates()
+  const usage: UserUsage = { userId, mutationsUsed: 0, uploadsUsed: 0, storageUsedMb: 0, currentPeriodStart: start, currentPeriodEnd: end }
+  if (isBrowser) localStorage.setItem(`mw_usage_${userId}`, JSON.stringify(usage))
+  return usage
+}
+
+// ======== MUTATION ENFORCEMENT ========
+
+export interface MutationResult {
+  allowed: boolean
+  reason?: "no_credits" | "limit_reached" | "subscription_expired" | "plan_blocked"
+  used?: number
+  limit?: number
+}
+
+export function canPerformMutation(userId: string, tier: Tier): MutationResult {
+  const plan = PLAN_DEFINITIONS[tier]
+  const sub = getUserSubscription(userId)
+
+  // Check subscription is active for paid tiers
+  if (tier !== "free" && sub.status !== "active") {
+    return { allowed: false, reason: "subscription_expired" }
+  }
+
+  // Free tier: mutations are blocked entirely
+  if (plan.mutationLimit === 0) {
+    return { allowed: false, reason: "no_credits", used: 0, limit: 0 }
+  }
+
+  // Unlimited mutations
+  if (plan.mutationLimit === -1) {
+    return { allowed: true }
+  }
+
+  const usage = getUserUsage(userId)
+  if (usage.mutationsUsed >= plan.mutationLimit) {
+    return { allowed: false, reason: "limit_reached", used: usage.mutationsUsed, limit: plan.mutationLimit }
+  }
+
+  return { allowed: true, used: usage.mutationsUsed, limit: plan.mutationLimit }
+}
+
+export function recordMutation(userId: string, action: string, resource: string): MutationRecord | null {
+  const usage = getUserUsage(userId)
+  usage.mutationsUsed += 1
+  setUserUsage(usage)
+
+  const record: MutationRecord = {
+    id: `mut-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    userId,
+    action,
+    resource,
+    timestamp: new Date().toISOString(),
+  }
+
+  // Persist mutation history
+  const history = getMutationHistory(userId)
+  history.unshift(record)
+  if (isBrowser) localStorage.setItem(`mw_mutations_${userId}`, JSON.stringify(history.slice(0, 5000)))
+  return record
+}
+
+export function getMutationHistory(userId: string): MutationRecord[] {
+  if (!isBrowser) return []
+  const raw = localStorage.getItem(`mw_mutations_${userId}`)
+  return raw ? JSON.parse(raw) : []
+}
+
+// ======== UPLOAD ENFORCEMENT ========
+
+export interface UploadResult {
+  allowed: boolean
+  reason?: "upload_limit" | "storage_limit" | "subscription_expired"
+  uploadsUsed?: number
+  uploadLimit?: number
+  storageUsedMb?: number
+  storageLimitMb?: number
+}
+
+export function canUploadFile(userId: string, tier: Tier, fileSizeMb: number): UploadResult {
+  const plan = PLAN_DEFINITIONS[tier]
+  const sub = getUserSubscription(userId)
+  const usage = getUserUsage(userId)
+
+  if (tier !== "free" && sub.status !== "active") {
+    return { allowed: false, reason: "subscription_expired" }
+  }
+
+  // Check upload count limit
+  if (plan.uploadLimit !== -1 && usage.uploadsUsed >= plan.uploadLimit) {
+    return { allowed: false, reason: "upload_limit", uploadsUsed: usage.uploadsUsed, uploadLimit: plan.uploadLimit }
+  }
+
+  // Check storage limit
+  if (plan.storageLimitMb !== -1 && (usage.storageUsedMb + fileSizeMb) > plan.storageLimitMb) {
+    return { allowed: false, reason: "storage_limit", storageUsedMb: usage.storageUsedMb, storageLimitMb: plan.storageLimitMb }
+  }
+
+  return { allowed: true, uploadsUsed: usage.uploadsUsed, uploadLimit: plan.uploadLimit, storageUsedMb: usage.storageUsedMb, storageLimitMb: plan.storageLimitMb }
+}
+
+export function recordUpload(userId: string, fileSizeMb: number) {
+  const usage = getUserUsage(userId)
+  usage.uploadsUsed += 1
+  usage.storageUsedMb = parseFloat((usage.storageUsedMb + fileSizeMb).toFixed(2))
+  setUserUsage(usage)
+}
+
+// ======== REAL ANALYTICS (computed from persisted data) ========
+
+export function computePlatformAnalytics() {
+  const users = getAllRegisteredUsers()
+  const transactions = getTransactions()
+  const tickets = getPurchasedTickets()
+  const auditLog = getAuditLog()
+
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+  const totalRevenue = transactions.filter(tx => tx.type === "debit").reduce((sum, tx) => sum + tx.amount, 0)
+  const totalRefunds = transactions.filter(tx => tx.type === "refund").reduce((sum, tx) => sum + tx.amount, 0)
+  const netRevenue = totalRevenue - totalRefunds
+  const ticketsSold = tickets.reduce((sum, t) => sum + t.qty, 0)
+  const activeUsers = users.filter(u => !u.suspended && u.lastLoginAt && new Date(u.lastLoginAt) > thirtyDaysAgo).length
+  const totalUsers = users.length
+  const subscribedUsers = users.filter(u => u.tier !== "free").length
+  const suspendedUsers = users.filter(u => u.suspended).length
+
+  // Revenue by month (from real transactions)
+  const revenueByMonth: Record<string, { revenue: number; refunds: number; tickets: number }> = {}
+  transactions.forEach(tx => {
+    const month = tx.date.slice(0, 7) // YYYY-MM
+    if (!revenueByMonth[month]) revenueByMonth[month] = { revenue: 0, refunds: 0, tickets: 0 }
+    if (tx.type === "debit") revenueByMonth[month].revenue += tx.amount
+    if (tx.type === "refund") revenueByMonth[month].refunds += tx.amount
+  })
+  tickets.forEach(t => {
+    const month = t.purchasedAt.slice(0, 7)
+    if (!revenueByMonth[month]) revenueByMonth[month] = { revenue: 0, refunds: 0, tickets: 0 }
+    revenueByMonth[month].tickets += t.qty
+  })
+
+  const monthlyData = Object.entries(revenueByMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-12)
+    .map(([month, data]) => ({
+      month: new Date(month + "-01").toLocaleDateString("en-US", { month: "short" }),
+      revenue: data.revenue,
+      refunds: data.refunds,
+      tickets: data.tickets,
+      net: data.revenue - data.refunds,
+    }))
+
+  // Storage used across all users
+  let totalStorageMb = 0
+  users.forEach(u => {
+    const usage = getUserUsage(u.id)
+    totalStorageMb += usage.storageUsedMb
+  })
+
+  // Total mutations across all users
+  let totalMutations = 0
+  users.forEach(u => {
+    const usage = getUserUsage(u.id)
+    totalMutations += usage.mutationsUsed
+  })
+
+  return {
+    totalRevenue,
+    totalRefunds,
+    netRevenue,
+    ticketsSold,
+    activeUsers,
+    totalUsers,
+    subscribedUsers,
+    suspendedUsers,
+    monthlyData,
+    totalStorageMb: parseFloat(totalStorageMb.toFixed(2)),
+    totalMutations,
+    recentActivity: auditLog.slice(0, 15),
+  }
 }

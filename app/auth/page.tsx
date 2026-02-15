@@ -201,7 +201,7 @@ function LoginForm({
         }
       }, 300)
     },
-    [email, password, login, router, t]
+    [email, password, rememberMe, login, router, t]
   )
 
   const handleSendOTP = useCallback(() => {

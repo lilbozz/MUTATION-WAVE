@@ -13,7 +13,11 @@ import {
   ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USER,
   setLastActivity, getLastActivity, setSessionStart,
   addAuditLogEntry, recordFailedLogin, resetFailedLogins, isAccountLocked,
+  getUserUsage, getUserSubscription, upgradeSubscription,
+  canPerformMutation, recordMutation, canUploadFile, recordUpload,
+  PLAN_DEFINITIONS,
   type User, type Tier, type Transaction, type Notification, type AuditAction,
+  type UserUsage, type UserSubscription, type MutationResult, type UploadResult,
 } from "@/lib/store"
 import { hasPermission, hasAnyPermission, getPermissionsForRole, type Permission, type Role } from "@/lib/permissions"
 
@@ -42,6 +46,16 @@ interface AuthContextType {
   dismissSessionTimeout: () => void
   // Audit
   logAction: (action: AuditAction, targetResource: string, previousValue?: string, newValue?: string) => void
+  // Usage & Subscription (real)
+  usage: UserUsage | null
+  subscription: UserSubscription | null
+  refreshUsage: () => void
+  checkMutation: () => MutationResult
+  performMutation: (action: string, resource: string) => MutationResult
+  checkUpload: (fileSizeMb: number) => UploadResult
+  performUpload: (fileSizeMb: number) => UploadResult
+  showUpgradeModal: boolean
+  setShowUpgradeModal: (v: boolean) => void
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -62,6 +76,15 @@ const AuthContext = createContext<AuthContextType>({
   sessionTimedOut: false,
   dismissSessionTimeout: () => {},
   logAction: () => {},
+  usage: null,
+  subscription: null,
+  refreshUsage: () => {},
+  checkMutation: () => ({ allowed: false, reason: "no_credits" as const }),
+  performMutation: () => ({ allowed: false, reason: "no_credits" as const }),
+  checkUpload: () => ({ allowed: false, reason: "upload_limit" as const }),
+  performUpload: () => ({ allowed: false, reason: "upload_limit" as const }),
+  showUpgradeModal: false,
+  setShowUpgradeModal: () => {},
 })
 
 export function useAuth() { return useContext(AuthContext) }
@@ -135,11 +158,18 @@ export function AppProviders({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [notifications, setNotificationsState] = useState<Notification[]>([])
   const [sessionTimedOut, setSessionTimedOut] = useState(false)
+  const [usage, setUsageState] = useState<UserUsage | null>(null)
+  const [subscription, setSubscriptionState] = useState<UserSubscription | null>(null)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const activityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     const u = getUser()
     setUserState(u)
+    if (u) {
+      setUsageState(getUserUsage(u.id))
+      setSubscriptionState(getUserSubscription(u.id))
+    }
     setLangState(getLang())
     const stored = typeof window !== "undefined" ? localStorage.getItem("mw_theme") : null
     setThemeState((stored as "dark" | "light") || "dark")
@@ -226,10 +256,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
       password,
       role: "user" as Role,
       tier: "free",
-      coins: 100,
-      badges: ["early-adopter"],
+      coins: 0,
+      badges: [],
       checkedInToday: false,
-      walletBalance: 500,
+      walletBalance: 0,
       createdAt: new Date().toISOString(),
       suspended: false,
       failedLoginAttempts: 0,
@@ -238,6 +268,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     saveRegisteredUser(newUser)
     saveUser(newUser)
     setUserState(newUser)
+    // Initialize usage and subscription
+    setUsageState(getUserUsage(newUser.id))
+    setSubscriptionState(getUserSubscription(newUser.id))
     setSessionStart()
     setLastActivity()
     addAuditLogEntry({
@@ -259,6 +292,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
       if (password === ADMIN_PASSWORD) {
         saveUser(ADMIN_USER)
         setUserState(ADMIN_USER)
+        setUsageState(getUserUsage(ADMIN_USER.id))
+        setSubscriptionState(getUserSubscription(ADMIN_USER.id))
         setSessionStart()
         setLastActivity()
         addAuditLogEntry({
@@ -317,6 +352,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
     saveRegisteredUser(updatedUser)
     saveUser(updatedUser)
     setUserState(updatedUser)
+    setUsageState(getUserUsage(updatedUser.id))
+    setSubscriptionState(getUserSubscription(updatedUser.id))
     setSessionStart()
     setLastActivity()
     addAuditLogEntry({
@@ -360,6 +397,8 @@ export function AppProviders({ children }: { children: ReactNode }) {
     saveRegisteredUser(updatedUser)
     saveUser(updatedUser)
     setUserState(updatedUser)
+    setUsageState(getUserUsage(updatedUser.id))
+    setSubscriptionState(getUserSubscription(updatedUser.id))
     setSessionStart()
     setLastActivity()
     addAuditLogEntry({
@@ -489,13 +528,67 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   const isAdmin = user?.role === "admin"
 
+  // ---- Real Usage & Subscription ----
+  const refreshUsage = useCallback(() => {
+    if (!user) return
+    setUsageState(getUserUsage(user.id))
+    setSubscriptionState(getUserSubscription(user.id))
+  }, [user])
+
+  const checkMutation = useCallback((): MutationResult => {
+    if (!user) return { allowed: false, reason: "no_credits" }
+    return canPerformMutation(user.id, user.tier)
+  }, [user])
+
+  const performMutation = useCallback((action: string, resource: string): MutationResult => {
+    if (!user) return { allowed: false, reason: "no_credits" }
+    const check = canPerformMutation(user.id, user.tier)
+    if (!check.allowed) {
+      setShowUpgradeModal(true)
+      return check
+    }
+    recordMutation(user.id, action, resource)
+    setUsageState(getUserUsage(user.id))
+    return { allowed: true, used: (check.used ?? 0) + 1, limit: check.limit }
+  }, [user])
+
+  const checkUploadFn = useCallback((fileSizeMb: number): UploadResult => {
+    if (!user) return { allowed: false, reason: "upload_limit" }
+    return canUploadFile(user.id, user.tier, fileSizeMb)
+  }, [user])
+
+  const performUploadFn = useCallback((fileSizeMb: number): UploadResult => {
+    if (!user) return { allowed: false, reason: "upload_limit" }
+    const check = canUploadFile(user.id, user.tier, fileSizeMb)
+    if (!check.allowed) {
+      setShowUpgradeModal(true)
+      return check
+    }
+    recordUpload(user.id, fileSizeMb)
+    setUsageState(getUserUsage(user.id))
+    return { allowed: true }
+  }, [user])
+
+  // Override upgradeTier to use real subscription engine
+  const realUpgradeTier = useCallback((tier: Tier) => {
+    if (!user) return
+    upgradeSubscription(user.id, tier)
+    updateUser({ tier })
+    setUsageState(getUserUsage(user.id))
+    setSubscriptionState(getUserSubscription(user.id))
+  }, [user, updateUser])
+
   return (
     <AuthContext.Provider value={{
       user, isLoading, register, login, loginWithPhone, verifyPhoneOTP,
-      forgotPassword: forgotPasswordFn, logout, updateUser, upgradeTier, isAdmin,
+      forgotPassword: forgotPasswordFn, logout, updateUser, upgradeTier: realUpgradeTier, isAdmin,
       can, canAny, permissions,
       sessionTimedOut, dismissSessionTimeout,
       logAction,
+      usage, subscription, refreshUsage,
+      checkMutation, performMutation,
+      checkUpload: checkUploadFn, performUpload: performUploadFn,
+      showUpgradeModal, setShowUpgradeModal,
     }}>
       <LangContext.Provider value={{ lang, setLang, t: tFn }}>
         <ThemeContext.Provider value={{ theme, toggleTheme }}>

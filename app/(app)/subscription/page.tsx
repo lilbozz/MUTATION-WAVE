@@ -4,88 +4,44 @@ import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Check, Crown, Star, Zap, X, AlertTriangle } from "lucide-react"
 import { useLang, useAuth, useWallet, useNotifications } from "@/components/providers"
-import type { Tier } from "@/lib/store"
+import { PLAN_DEFINITIONS, type Tier } from "@/lib/store"
 import { PageTransition, FadeIn } from "@/components/page-transition"
 
-const PLANS: {
-  tier: Tier
-  price: number
-  icon: typeof Crown
-  features: string[]
-}[] = [
-  {
-    tier: "free",
-    price: 0,
-    icon: Star,
-    features: [
-      "Access free courses",
-      "Browse all events",
-      "Community access",
-      "Basic profile",
-    ],
-  },
-  {
-    tier: "member",
-    price: 9.99,
-    icon: Zap,
-    features: [
-      "All Free features",
-      "Access Member courses",
-      "Priority event booking",
-      "Monthly coin bonus (50)",
-      "Exclusive badges",
-      "Artist Q&A access",
-    ],
-  },
-  {
-    tier: "pro",
-    price: 24.99,
-    icon: Crown,
-    features: [
-      "All Member features",
-      "Access ALL courses",
-      "VIP event access",
-      "Monthly coin bonus (200)",
-      "Exclusive Pro badges",
-      "1-on-1 artist sessions",
-      "Early access to drops",
-      "Dashboard analytics",
-    ],
-  },
-]
-
 const TIER_ORDER: Tier[] = ["free", "member", "pro"]
+const TIER_ICONS: Record<Tier, typeof Crown> = { free: Star, member: Zap, pro: Crown }
 
 export default function SubscriptionPage() {
   const { t } = useLang()
-  const { user, upgradeTier, updateUser } = useAuth()
+  const { user, upgradeTier, updateUser, usage, subscription } = useAuth()
   const { addTransaction } = useWallet()
   const { addNotification } = useNotifications()
 
-  const [confirmPlan, setConfirmPlan] = useState<(typeof PLANS)[number] | null>(null)
+  const [confirmPlan, setConfirmPlan] = useState<Tier | null>(null)
   const userTier = user?.tier ?? "free"
+  const plans = Object.values(PLAN_DEFINITIONS)
 
-  function handleUpgrade(plan: (typeof PLANS)[number]) {
+  function handleUpgrade(tier: Tier) {
     if (!user) return
-    const tierIdx = TIER_ORDER.indexOf(plan.tier)
+    const plan = PLAN_DEFINITIONS[tier]
+    const tierIdx = TIER_ORDER.indexOf(tier)
     const currentIdx = TIER_ORDER.indexOf(userTier)
     if (tierIdx <= currentIdx) return
 
-    if (plan.price > 0 && user.walletBalance < plan.price) return
+    if (plan.priceMonthly > 0 && user.walletBalance < plan.priceMonthly) return
 
-    if (plan.price > 0) {
-      updateUser({ walletBalance: user.walletBalance - plan.price })
+    if (plan.priceMonthly > 0) {
+      updateUser({ walletBalance: user.walletBalance - plan.priceMonthly })
       addTransaction({
         id: `tx-${Date.now()}`,
         date: new Date().toISOString().split("T")[0],
-        description: `Subscription upgrade to ${plan.tier.charAt(0).toUpperCase() + plan.tier.slice(1)}`,
-        amount: plan.price,
+        description: `Subscription upgrade to ${plan.name}`,
+        amount: plan.priceMonthly,
         type: "debit",
       })
     }
 
-    upgradeTier(plan.tier)
-    addNotification(`You upgraded to ${plan.tier.charAt(0).toUpperCase() + plan.tier.slice(1)} plan!`)
+    upgradeTier(tier)
+    addNotification(`You upgraded to ${plan.name} plan!`)
   }
 
   return (
@@ -101,14 +57,14 @@ export default function SubscriptionPage() {
         </FadeIn>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {PLANS.map((plan, i) => {
-            const isCurrent = userTier === plan.tier
-            const canUpgrade = TIER_ORDER.indexOf(plan.tier) > TIER_ORDER.indexOf(userTier)
-            const isPro = plan.tier === "pro"
-            const Icon = plan.icon
+          {plans.map((plan, i) => {
+            const isCurrent = userTier === plan.id
+            const canUpgrade = TIER_ORDER.indexOf(plan.id) > TIER_ORDER.indexOf(userTier)
+            const isPro = plan.id === "pro"
+            const Icon = TIER_ICONS[plan.id]
 
             return (
-              <FadeIn key={plan.tier} delay={i * 0.1}>
+              <FadeIn key={plan.id} delay={i * 0.1}>
                 <motion.div
                   whileHover={canUpgrade ? { scale: 1.02, y: -4 } : {}}
                   className={`relative bg-card border rounded-2xl p-6 flex flex-col ${
@@ -133,18 +89,47 @@ export default function SubscriptionPage() {
                     </div>
                     <div>
                       <h3 className="font-display font-bold text-lg text-card-foreground">
-                        {t(`sub.${plan.tier}`)}
+                        {plan.name}
                       </h3>
                     </div>
                   </div>
 
-                  <div className="mb-6">
+                  <div className="mb-4">
                     <span className="font-display font-bold text-3xl text-card-foreground">
-                      ${plan.price}
+                      ${plan.priceMonthly}
                     </span>
-                    {plan.price > 0 && (
+                    {plan.priceMonthly > 0 && (
                       <span className="text-sm text-muted-foreground">{t("sub.monthly")}</span>
                     )}
+                    {plan.priceYearly > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        or ${plan.priceYearly}/year (save {Math.round((1 - plan.priceYearly / (plan.priceMonthly * 12)) * 100)}%)
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Limits */}
+                  <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-sm font-bold text-card-foreground">
+                          {plan.mutationLimit === -1 ? "Unlimited" : plan.mutationLimit}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Mutations</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-card-foreground">
+                          {plan.uploadLimit === -1 ? "Unlimited" : plan.uploadLimit}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Uploads</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-card-foreground">
+                          {plan.storageLimitMb === -1 ? "Unlimited" : plan.storageLimitMb >= 1024 ? `${(plan.storageLimitMb / 1024).toFixed(0)} GB` : `${plan.storageLimitMb} MB`}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Storage</p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-2.5 mb-6 flex-1">
@@ -159,20 +144,25 @@ export default function SubscriptionPage() {
                   {isCurrent ? (
                     <div className="py-2.5 text-center text-sm font-semibold text-primary bg-primary/10 rounded-xl">
                       {t("sub.current")}
+                      {subscription && subscription.tier !== "free" && (
+                        <p className="text-[10px] text-muted-foreground font-normal mt-0.5">
+                          Renews {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
+                        </p>
+                      )}
                     </div>
                   ) : canUpgrade ? (
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => setConfirmPlan(plan)}
-                      disabled={plan.price > 0 && (user?.walletBalance ?? 0) < plan.price}
+                      onClick={() => setConfirmPlan(plan.id)}
+                      disabled={plan.priceMonthly > 0 && (user?.walletBalance ?? 0) < plan.priceMonthly}
                       className={`w-full py-2.5 font-semibold rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         isPro
                           ? "bg-primary text-primary-foreground hover:bg-primary/90"
                           : "bg-surface border border-border text-foreground hover:bg-muted"
                       }`}
                     >
-                      {t("sub.upgrade")} - ${plan.price}{t("sub.monthly")}
+                      {t("sub.upgrade")} - ${plan.priceMonthly}{t("sub.monthly")}
                     </motion.button>
                   ) : (
                     <div className="py-2.5 text-center text-sm text-muted-foreground">
@@ -185,9 +175,40 @@ export default function SubscriptionPage() {
           })}
         </div>
 
-        {/* Balance reminder */}
-        <FadeIn delay={0.3}>
-          <div className="mt-8 text-center text-xs text-muted-foreground">
+        {/* Current usage summary */}
+        {usage && (
+          <FadeIn delay={0.3}>
+            <div className="mt-8 bg-card border border-border rounded-2xl p-6">
+              <h2 className="font-display font-semibold text-lg text-card-foreground mb-4">Current Period Usage</h2>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-card-foreground">{usage.mutationsUsed}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Mutations used
+                    {PLAN_DEFINITIONS[userTier].mutationLimit !== -1 && ` of ${PLAN_DEFINITIONS[userTier].mutationLimit}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-card-foreground">{usage.uploadsUsed}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Uploads used
+                    {PLAN_DEFINITIONS[userTier].uploadLimit !== -1 && ` of ${PLAN_DEFINITIONS[userTier].uploadLimit}`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-card-foreground">{usage.storageUsedMb.toFixed(1)} MB</p>
+                  <p className="text-xs text-muted-foreground">
+                    Storage used
+                    {PLAN_DEFINITIONS[userTier].storageLimitMb !== -1 && ` of ${PLAN_DEFINITIONS[userTier].storageLimitMb} MB`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </FadeIn>
+        )}
+
+        <FadeIn delay={0.35}>
+          <div className="mt-4 text-center text-xs text-muted-foreground">
             Wallet balance: <span className="font-semibold text-foreground">${user?.walletBalance ?? 0}</span>
             {" "}&middot;{" "}
             Subscriptions are charged from your wallet.
@@ -221,7 +242,10 @@ export default function SubscriptionPage() {
                   Confirm Upgrade
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Upgrade to <span className="font-semibold text-foreground">{confirmPlan.tier.charAt(0).toUpperCase() + confirmPlan.tier.slice(1)}</span> for <span className="font-semibold text-primary">${confirmPlan.price}/mo</span>? This will be charged from your wallet balance.
+                  Upgrade to <span className="font-semibold text-foreground">{PLAN_DEFINITIONS[confirmPlan].name}</span> for <span className="font-semibold text-primary">${PLAN_DEFINITIONS[confirmPlan].priceMonthly}/mo</span>? This will be charged from your wallet balance.
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  You will get: {PLAN_DEFINITIONS[confirmPlan].mutationLimit === -1 ? "Unlimited" : PLAN_DEFINITIONS[confirmPlan].mutationLimit} mutations, {PLAN_DEFINITIONS[confirmPlan].uploadLimit === -1 ? "Unlimited" : PLAN_DEFINITIONS[confirmPlan].uploadLimit} uploads, {PLAN_DEFINITIONS[confirmPlan].storageLimitMb === -1 ? "Unlimited" : `${PLAN_DEFINITIONS[confirmPlan].storageLimitMb} MB`} storage
                 </p>
               </div>
               <div className="flex border-t border-border">

@@ -5,6 +5,7 @@ import { AppProviders } from "@/components/providers"
 import { SessionTimeoutModal } from "@/components/session-timeout-modal"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { LangSync } from "@/components/lang-sync"
+import { UpgradeModal } from "@/components/upgrade-modal"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,6 +42,7 @@ export default function RootLayout({
           <LangSync />
           {children}
           <SessionTimeoutModal />
+          <UpgradeModal />
           <ScrollToTop />
         </AppProviders>
       </body>

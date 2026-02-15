@@ -6,14 +6,14 @@ import { usePathname, useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Home, Calendar, BookOpen, Trophy, BarChart3, Wallet, Crown,
-  Gift, Shield, Search, Bell, Sun, Moon, Globe, Menu, X, LogOut, User,
-  DollarSign, Settings, ChevronDown,
+  Gift, Shield, Search, Bell, Sun, Moon, Globe, Menu, X, LogOut,
+  User as UserIcon, DollarSign, Settings, ChevronDown,
 } from "lucide-react"
 import { useAuth, useLang, useTheme, useNotifications } from "@/components/providers"
 import { LANGUAGES, type Lang } from "@/lib/i18n"
 import { ROLE_META } from "@/lib/permissions"
 import type { Permission } from "@/lib/permissions"
-import type { User } from "@/lib/store"
+import type { User as UserType } from "@/lib/store"
 
 interface NavItem {
   href: string
@@ -261,7 +261,7 @@ export function Navbar() {
               <div className="border-t border-border mt-4 pt-4">
                 <div className="flex items-center gap-3 px-4 py-3">
                   <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                    <User className="h-4 w-4 text-primary" />
+                    <UserIcon className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate" title={user.name}>{user.name}</p>
@@ -367,7 +367,7 @@ function ProfileDropdown({
   user, tierBadge, tierLabel, showProfileMenu, setShowProfileMenu,
   profileRef, lang, setLang, theme, toggleTheme, handleLogout, t,
 }: {
-  user: User
+  user: UserType
   tierBadge: string
   tierLabel: string
   showProfileMenu: boolean
@@ -408,7 +408,7 @@ function ProfileDropdown({
         aria-haspopup="menu"
       >
         <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-          <User className="h-3.5 w-3.5 text-primary" />
+          <UserIcon className="h-3.5 w-3.5 text-primary" />
         </div>
         <div className="hidden md:block max-w-[100px] lg:max-w-[120px]">
           <p className="text-xs font-medium text-foreground leading-none truncate" title={user.name}>
@@ -437,7 +437,7 @@ function ProfileDropdown({
             <div className="p-4 border-b border-border shrink-0">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
-                  <User className="h-5 w-5 text-primary" />
+                  <UserIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-card-foreground truncate" title={user.name}>
