@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import { useAuth, useLang } from "@/components/providers"
@@ -13,12 +13,17 @@ type AuthView = "login" | "register" | "forgot"
 
 export default function AuthPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const { t } = useLang()
   const [view, setView] = useState<AuthView>("login")
 
-  if (user) {
-    router.replace("/home")
+  useEffect(() => {
+    if (user) {
+      router.replace("/home")
+    }
+  }, [user, router])
+
+  if (isLoading || user) {
     return null
   }
 
