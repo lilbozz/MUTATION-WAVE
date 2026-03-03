@@ -163,7 +163,7 @@ html[lang="en"] {
 /* Ensure buttons handle multi-line text gracefully */
 button, [role="button"], a {
   min-height: auto;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   word-break: normal;
 }
 
@@ -176,15 +176,15 @@ button, [role="button"], a {
 
 /* Safe word wrapping for descriptions */
 p, span, h1, h2, h3, h4, h5, h6 {
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 /* Cards should expand vertically, never overflow horizontally */
 [class*="rounded-xl"],
 [class*="rounded-2xl"] {
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 /* No horizontal scrollbar anywhere except explicitly allowed */
