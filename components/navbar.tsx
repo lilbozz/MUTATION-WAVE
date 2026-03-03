@@ -100,7 +100,6 @@ export function Navbar() {
             ? "py-2.5 bg-background/80 backdrop-blur-xl border-b border-border/50 shadow-sm"
             : "py-4 bg-background/50 backdrop-blur-sm"
         }`}
-        style={{ maxWidth: "100vw", overflowX: "hidden" }}
       >
         <div className="mx-auto max-w-[1280px] flex items-center justify-between px-4 sm:px-6">
           {/* Logo */}
@@ -410,7 +409,7 @@ function ProfileDropdown({
         <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
           <UserIcon className="h-3.5 w-3.5 text-primary" />
         </div>
-        <div className="hidden md:block max-w-[100px] lg:max-w-[120px]">
+        <div className="hidden md:block max-w-[120px] lg:max-w-[150px]">
           <p className="text-xs font-medium text-foreground leading-none truncate" title={user.name}>
             {user.name}
           </p>
