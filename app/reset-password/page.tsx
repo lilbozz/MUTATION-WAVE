@@ -1,39 +1,35 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { ArrowRight } from "lucide-react"
+import { Eye, EyeOff, ArrowRight } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
 const inputClass =
   "w-full px-4 py-3 bg-[#141417] border border-[#1C1C22] rounded-xl text-[#F5F5F7] placeholder:text-[#F5F5F7]/30 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all text-sm"
 
-export default function ResetPasswordPage() {
-  const [email, setEmail] = useState("")
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState(false)
-  const [loading, setLoading] = useState(false)
+type View = "request" | "email_sent" | "update" | "updated"
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError("")
-    if (!email.trim()) {
-      setError("Please enter your email address.")
-      return
-    }
-    setLoading(true)
-    const { error: authError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      { redirectTo: `${window.location.origin}/reset-password` }
-    )
-    setLoading(false)
-    if (authError) {
-      setError(authError.message)
-      return
-    }
-    setSuccess(true)
-  }
+function getPasswordErrors(password: string): string[] {
+  const errors: string[] = []
+  if (password.length > 0 && password.length < 8) errors.push("At least 8 characters")
+  if (password.length > 0 && !/\d/.test(password)) errors.push("At least 1 number")
+  return errors
+}
+
+export default function ResetPasswordPage() {
+  const [view, setView] = useState<View>("request")
+
+  // Detect Supabase recovery session
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setView("update")
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   return (
     <div className="min-h-screen bg-[#0B0B0D] flex items-center justify-center px-6">
@@ -57,66 +53,217 @@ export default function ResetPasswordPage() {
             <span className="font-display font-bold text-lg text-primary-foreground">MW</span>
           </div>
           <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#F5F5F7] text-center">
-            Reset password
+            {view === "update" || view === "updated" ? "Set new password" : "Reset password"}
           </h1>
           <p className="text-[#F5F5F7]/50 text-sm mt-2 text-center">
-            We&apos;ll send you a reset link
+            {view === "update"
+              ? "Choose a strong password"
+              : view === "updated"
+              ? "Your password has been updated"
+              : "We\u2019ll send you a reset link"}
           </p>
         </div>
 
-        {success ? (
-          <div className="flex flex-col gap-6">
-            <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-6 py-4 text-center">
-              <p className="text-sm text-green-400 font-medium">
-                Check your email for a password reset link.
-              </p>
-            </div>
-            <Link
-              href="/login"
-              className="w-full py-3 bg-[#141417] border border-[#1C1C22] text-[#F5F5F7]/70 font-semibold rounded-xl text-sm flex items-center justify-center gap-2 hover:text-[#F5F5F7] transition-colors"
-            >
-              Back to sign in
-            </Link>
-          </div>
-        ) : (
-          <>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-[#F5F5F7]/70 uppercase tracking-wider">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setError("") }}
-                  placeholder="you@example.com"
-                  className={inputClass}
-                  autoComplete="email"
-                  autoFocus
-                />
-              </div>
-
-              {error && (
-                <p className="text-sm text-red-400">{error}</p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl transition-all mt-1 flex items-center justify-center gap-2 disabled:opacity-60 text-sm hover:opacity-90"
-              >
-                {loading ? <Spinner /> : <>Send reset link <ArrowRight className="h-4 w-4" /></>}
-              </button>
-            </form>
-
-            <p className="text-center text-sm text-[#F5F5F7]/40 mt-6">
-              <Link href="/login" className="text-primary hover:text-primary/80 font-medium transition-colors">
-                Back to sign in
-              </Link>
-            </p>
-          </>
-        )}
+        {view === "request" && <RequestForm onSent={() => setView("email_sent")} />}
+        {view === "email_sent" && <EmailSentView />}
+        {view === "update" && <UpdateForm onUpdated={() => setView("updated")} />}
+        {view === "updated" && <UpdatedView />}
       </motion.div>
+    </div>
+  )
+}
+
+// ── Request reset email ────────────────────────────────────────────────────────
+function RequestForm({ onSent }: { onSent: () => void }) {
+  const [email, setEmail] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    if (!email.trim()) { setError("Please enter your email address."); return }
+    setLoading(true)
+    const { error: authError } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      { redirectTo: `${window.location.origin}/reset-password` }
+    )
+    setLoading(false)
+    if (authError) { setError(authError.message); return }
+    onSent()
+  }
+
+  return (
+    <>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[#F5F5F7]/70 uppercase tracking-wider">
+            Email
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError("") }}
+            placeholder="you@example.com"
+            className={inputClass}
+            autoComplete="email"
+            autoFocus
+          />
+        </div>
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl transition-all mt-1 flex items-center justify-center gap-2 disabled:opacity-60 text-sm hover:opacity-90"
+        >
+          {loading ? <Spinner /> : <>Send reset link <ArrowRight className="h-4 w-4" /></>}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-[#F5F5F7]/40 mt-6">
+        <Link href="/login" className="text-primary hover:text-primary/80 font-medium transition-colors">
+          Back to sign in
+        </Link>
+      </p>
+    </>
+  )
+}
+
+// ── Email sent confirmation ────────────────────────────────────────────────────
+function EmailSentView() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-6 py-4 text-center">
+        <p className="text-sm text-green-400 font-medium">
+          Check your email for a password reset link.
+        </p>
+      </div>
+      <Link
+        href="/login"
+        className="w-full py-3 bg-[#141417] border border-[#1C1C22] text-[#F5F5F7]/70 font-semibold rounded-xl text-sm flex items-center justify-center gap-2 hover:text-[#F5F5F7] transition-colors"
+      >
+        Back to sign in
+      </Link>
+    </div>
+  )
+}
+
+// ── Set new password (recovery session active) ─────────────────────────────────
+function UpdateForm({ onUpdated }: { onUpdated: () => void }) {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const passwordErrors = getPasswordErrors(password)
+  const confirmMismatch = confirm.length > 0 && confirm !== password
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    if (!password || !confirm) { setError("Please fill in all fields."); return }
+    if (passwordErrors.length > 0) { setError("Password does not meet requirements."); return }
+    if (password !== confirm) { setError("Passwords do not match."); return }
+    setLoading(true)
+    const { error: authError } = await supabase.auth.updateUser({ password })
+    setLoading(false)
+    if (authError) { setError(authError.message); return }
+    onUpdated()
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-[#F5F5F7]/70 uppercase tracking-wider">
+          New password
+        </label>
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError("") }}
+            placeholder="••••••••"
+            className={`${inputClass} pr-12`}
+            autoComplete="new-password"
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F5F5F7]/40 hover:text-[#F5F5F7]/70 transition-colors"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {passwordErrors.length > 0 && (
+          <ul className="flex flex-col gap-0.5 mt-1">
+            {passwordErrors.map((msg) => (
+              <li key={msg} className="text-xs text-red-400">{msg}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-[#F5F5F7]/70 uppercase tracking-wider">
+          Confirm password
+        </label>
+        <div className="relative">
+          <input
+            type={showConfirm ? "text" : "password"}
+            value={confirm}
+            onChange={(e) => { setConfirm(e.target.value); setError("") }}
+            placeholder="••••••••"
+            className={`${inputClass} pr-12`}
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirm(!showConfirm)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#F5F5F7]/40 hover:text-[#F5F5F7]/70 transition-colors"
+            aria-label={showConfirm ? "Hide password" : "Show password"}
+          >
+            {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        {confirmMismatch && (
+          <p className="text-xs text-red-400 mt-1">Passwords do not match.</p>
+        )}
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl transition-all mt-1 flex items-center justify-center gap-2 disabled:opacity-60 text-sm hover:opacity-90"
+      >
+        {loading ? <Spinner /> : <>Update password <ArrowRight className="h-4 w-4" /></>}
+      </button>
+    </form>
+  )
+}
+
+// ── Password updated confirmation ──────────────────────────────────────────────
+function UpdatedView() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="bg-green-500/10 border border-green-500/20 rounded-xl px-6 py-4 text-center">
+        <p className="text-sm text-green-400 font-medium">
+          Password updated successfully.
+        </p>
+      </div>
+      <Link
+        href="/login"
+        className="w-full py-3.5 bg-primary text-primary-foreground font-semibold rounded-xl text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        Sign in <ArrowRight className="h-4 w-4" />
+      </Link>
     </div>
   )
 }
