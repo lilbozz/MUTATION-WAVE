@@ -143,6 +143,20 @@ html[lang="th"] a,
 html[lang="th"] .btn {
   min-height: 2.5rem;
   line-height: 1.4;
+  word-break: normal;
+}
+
+/* Thai text: prevent mid-cluster breaks using browser ICU segmentation */
+html[lang="th"] p,
+html[lang="th"] span,
+html[lang="th"] h1,
+html[lang="th"] h2,
+html[lang="th"] h3,
+html[lang="th"] h4,
+html[lang="th"] h5,
+html[lang="th"] h6 {
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 /* CJK languages: moderate line-height, no letter-spacing */
@@ -177,14 +191,14 @@ button, [role="button"], a {
 /* Safe word wrapping for descriptions */
 p, span, h1, h2, h3, h4, h5, h6 {
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 
 /* Cards should expand vertically, never overflow horizontally */
 [class*="rounded-xl"],
 [class*="rounded-2xl"] {
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
 }
 
 /* No horizontal scrollbar anywhere except explicitly allowed */
